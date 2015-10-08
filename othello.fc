@@ -1,0 +1,216 @@
+decimal
+variable a 100 allot
+
+variable i4 9 allot 1 i4 c!
+1 i4 1 + c!  0 i4 2 + c!  0 i4 3 + c!  0 i4 4 + c!
+1 i4 5 + c!  2 i4 6 + c!   2 i4 7 + c!   2 i4 8 + c!
+variable j4 9 allot 1 j4 c!
+2 j4 1 + c!   2 j4 2 + c!   1 j4 3 + c!  0 j4 4 + c!
+0 j4 5 + c!  0 j4 6 + c!  1 j4 7 + c!  2 j4 8 + c!
+variable d 3 allot
+46 d c!  79 d 1 + c!  88 d 2 + c!
+: board cr 3 spaces ." A B C D E F G H" cr
+  9 1 do
+    i .
+      9 1 do
+        1 spaces
+        a j 10 *
+        i + + c@ d + c@ emit
+      loop
+      cr
+  loop ;
+: initial 99 0 do
+  0 a i + c! loop
+  1 a 44 + c!
+  1 a 55 + c!
+  2 a 45 + c!
+  2 a 54 + c! ;
+
+variable t1 1 t1 c!
+variable t2 2 t2 c!
+variable s1 0 s1 c!
+variable s3 0 s3 c!
+variable u 0 u c!
+
+variable fl 0 fl c!
+: neighbor 0 fl c!
+  3 0 do
+    3 0 do
+    over j 1 - + 10 * over i 1 - + + a + c@ t2 c@ =
+    if
+      1 fl c! leave
+    then
+    loop
+  loop drop drop ;
+
+: score 0 s1 c!
+  9 1 do
+      -1 s3 c!
+      over i i4 + c@ 1 - + 10 *
+      over i j4 + c@ 1 - + + a + c@ t2 c@ =
+      if
+        9 1 do
+          s3 c@ 1 + s3 c!
+          over j i4 + c@ 1 - i * + 10 *
+          over j j4 + c@ 1 - i * + + a +
+          c@ dup t2 c@ = 0=
+          if leave
+          else drop
+          then
+        loop
+       t1 c@ =
+       if
+         s3 c@ dup s1 c@ + s1 c!
+         u c@
+         if
+           1+ 1 do
+             over j i4 + c@ 1 - i * + 10 *
+             over j j4 + c@ 1 - i * + + a +
+             t1 c@ swap c!
+           loop
+          else drop
+          then
+        then
+       then loop ;
+
+
+variable c  2 c c!
+variable h  1 h c!
+: choose cr ." Do you want X or O?"
+  key dup emit
+  120 =
+  if
+    1 c c!
+    2 h c!
+  else
+    2 c c!
+    1 h c!
+  then ;
+
+variable v 64 allot
+: vtable 64 0 do i v + c! loop ;
+57 5 49 41 38 50 6 58
+7 1 13 21 22 14 2 8
+51 15 45 29 30 46 16 52
+39 23 31 0 0 32 24 40
+41 25 33 0 0 34 26 42
+53 17 47 35 36 48 18 54
+9 3 19 27 28 20 4 10
+59 11 55 43 44 56 12 60
+vtable
+
+variable i3
+variable j3
+variable b1
+variable n
+: cpmove  c c@ t1 c!
+         h c@ t2 c!
+         0 b1 c!
+ 9 1 do
+   9 1 do
+     j 10 * i + a + c@ 0=
+     if
+       j i neighbor
+       fl c@
+       if
+         0 u c!
+         j i score
+         s1 c@ 0 >
+         if
+           over 1- 2* 2* 2* over 1- + v + c@
+           s1 c@ 20 * + dup b1 c@ >
+           if
+             b1 c!  j3 c!  i3 c!
+           else drop drop drop
+           then
+          else drop drop
+          then
+        then
+       then
+    loop
+  loop
+  b1 c@ 0=
+  if cr ." I have to forfeit my move"
+     n c@ 1 - n c!
+  else
+     c c@ i3 c@ 10 *
+     j3 c@ + a + c!
+     i3 c@ j3 c@
+     1 u c!
+     score
+     cr ." I move to "
+     i3 c@ . 44 emit 32 emit
+     j3 c@ 64 + emit
+     cr
+     ." That gives me " s1 c@ .
+     ." of your pieces. "
+  then drop drop ;
+
+: 1pmove cr ." That gives you "
+         s1 c@ . ." of my pieces "
+         1 u c! score
+         over 10 * + a + h c@ swap c! ;
+
+: pmove
+        h c@ t1 c! c c@ t2 c!
+        cr ." Your move: "
+        key dup 48 = 0=
+      if
+        dup emit 48 -
+        44 emit key dup emit 96 -
+        over 10 * over + a + c@ 0=
+        if
+          over over neighbor fl c@
+          if
+            0 u c! score
+            s1 c@ 0 >
+            if 1pmove
+            else cr ." That doesn't flank a row "
+                 board recurse
+            then
+          else cr ." That isn't next to one of my pieces "
+                board recurse
+          then
+        else
+          cr ." That square is occupied"
+          board recurse
+        then
+       else
+        cr ." Are you forfeiting a move" key
+        dup emit
+        121 = 0=
+        if
+          board recurse
+        else n c@ -1 + n c!
+        then
+       then drop ;
+
+: othello initial choose decimal 4 n c!
+   cr ." Do you want to move first? "
+   key dup emit 121 =
+   if
+     board pmove n c@ 1 + n c!
+   then
+   begin
+     cpmove n c@ 1 + n c! board
+     n c@ 64 = 0=
+     if
+       pmove n c@ 1 + n c!
+     then
+     n c@ 64 =
+   until
+   0 0 s1 c! s3 c!
+   99 0 do
+   i a + c@ dup
+   c c@ =
+   if drop s1 c@ 1 + s1 c!
+   else
+      h c@ =
+      if s3 c@ 1 + s3 c!
+      then
+   then
+   loop
+cr ." I have " s1 c@ .
+   ." and you have " s3 c@ .
+   ." squares. " ;
+
