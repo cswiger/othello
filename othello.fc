@@ -1,14 +1,65 @@
+( OTHELLO 
+( Based on a verion in BASIC published in
+( Byte magazine long, long ago.
+
+( board array, reserve 100 bytes
+
 decimal
 variable a 100 allot
 
+( offset arrays
+( the 8 direction arrays (I4 and J4) are
+( indexed 1-8, i.e.
+( 1 i4 + c@     for the i,j increments for a
+( 1 j4 + c@     give direction -
+( the direction for the offsets are
+( +-+-+-+
+( |4|3|2|
+( |5|0|1|
+( |6|7|8|
+( +-+-+-+
 variable i4 9 allot 1 i4 c!
 1 i4 1 + c!  0 i4 2 + c!  0 i4 3 + c!  0 i4 4 + c!
 1 i4 5 + c!  2 i4 6 + c!   2 i4 7 + c!   2 i4 8 + c!
 variable j4 9 allot 1 j4 c!
 2 j4 1 + c!   2 j4 2 + c!   1 j4 3 + c!  0 j4 4 + c!
 0 j4 5 + c!  0 j4 6 + c!  1 j4 7 + c!  2 j4 8 + c!
+( I changed this from my original forth code, from -1,0,1
+( to 0,1,2 and then subtract 1 everytime a direction offset
+( is looked up.
+
+
+( the board array a shall be indexed as a 10x10 byte array;
+( location I,J is developed by
+( I 10 *              1st index by ten
+( J + a +             add in j, then array address
+( This leaves an address on stack which can be followed by
+( a c@ or c!. We will use the variable passing convention of
+( J (column) on top of stack with I (row) second.
+( a contains the 8x8 board for othello, with a border
+(
+( 0,0      J -->
+(    ------------------
+(    |
+(  I |
+(    |       a
+(  | |
+(  | |
+(  V |
+(    |
+(                     9,9
+(
+( The contents of a will be
+( 0 - empty square
+( 1 - O
+( 2 - X
+(
+
+( A 3 element array d is used to convert 0,1,2 to X,.,O
 variable d 3 allot
 46 d c!  79 d 1 + c!  88 d 2 + c!
+
+( a procedure to print out the board
 : board cr 3 spaces ." A B C D E F G H" cr
   9 1 do
     i .
@@ -19,6 +70,8 @@ variable d 3 allot
       loop
       cr
   loop ;
+  
+( procedure to set a to all 0's and setup beginning position
 : initial 99 0 do
   0 a i + c! loop
   1 a 44 + c!
@@ -26,12 +79,22 @@ variable d 3 allot
   2 a 45 + c!
   2 a 54 + c! ;
 
+( Some variables used by the common procedures, i.e., by computer
+( move (cpmove) and player move (pmove) to indicate which piece that
+( board is being analysed for
 variable t1 1 t1 c!
 variable t2 2 t2 c!
+( variables to keep score with
 variable s1 0 s1 c!
 variable s3 0 s3 c!
+( u serves as a flag to indicate whether pieces are to be 'flipped'
+( in procedure SCORE or just counter (in s1)
 variable u 0 u c!
+( u = true means flip, false for don't change the board
 
+( procedure neighbor checks a location I,J (on stack when called)
+( for an adjacent T2, sets a flag FL accordingly (1 if found,
+( 0 if not)
 variable fl 0 fl c!
 : neighbor 0 fl c!
   3 0 do
@@ -42,7 +105,24 @@ variable fl 0 fl c!
     then
     loop
   loop drop drop ;
-
+  
+( procedure score and update counts 'runs' of T2's terminated
+( by a T1 in all directions from I,J (on stack when called)
+( and leaves total count in s3. if U=TRUE, flips pieces on the board
+(
+( e.g., if T2=2 (X)
+(
+( +-+-+-+-+-+-+-+
+( | | | | | |1| |
+( | | | | |2| | |
+( | | | |2| | | | I = I,J on stack
+( | | |I|2|2|2|1|
+( | | |2| | | | |
+( | | |2| | | | |
+( | | | | | | | |
+( +-+-+-+-+-+-+-+
+( should score 5. Note that the lower leg, being unbounded by a T1
+( (1 or 'O' in this ex) is not counted.
 : score 0 s1 c!
   9 1 do
       -1 s3 c!
@@ -73,7 +153,11 @@ variable fl 0 fl c!
         then
        then loop ;
 
-
+( In addition to T1 and T2, which 'change sides' as NEIGHBOR and SCORE
+( are used to look for X's and O's on the board array A, we have C and H
+( ( Computer and Human ) which are game constants, and do not change
+( sides. Has 2 for X and 1 for O. These are set by CHOOSE at beginning of
+( game.
 variable c  2 c c!
 variable h  1 h c!
 : choose cr ." Do you want X or O?"
@@ -87,8 +171,15 @@ variable h  1 h c!
     1 h c!
   then ;
 
+( Board position array, a 'territory' strategy
+( Highest number has greater preferance
+( I,J row/column 0-7
+( indexed as { i 8 * j + v + c@ }
+( The position value array, without a border
 variable v 64 allot
+( to build the array
 : vtable 64 0 do i v + c! loop ;
+( now push the table to stack
 57 5 49 41 38 50 6 58
 7 1 13 21 22 14 2 8
 51 15 45 29 30 46 16 52
@@ -97,8 +188,12 @@ variable v 64 allot
 53 17 47 35 36 48 18 54
 9 3 19 27 28 20 4 10
 59 11 55 43 44 56 12 60
+( then build it
 vtable
 
+( The computer move procedure ( CPMOVE ) scans the board for the best
+( move. Uses I3, J3 to remember the best found so far, and B1 for the
+( best score.
 variable i3
 variable j3
 variable b1
