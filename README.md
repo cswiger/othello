@@ -1,4 +1,5 @@
 # othello
+<pre>
 Othello board game for FORTH - works with latest gforth 
 code from long ago I keep bringing forward
 
@@ -34,5 +35,6 @@ That gives me 1 of your pieces.
 6  . . . . . . . .
 7  . . . . . . . .
 8  . . . . . . . .
+</pre>
 
 
