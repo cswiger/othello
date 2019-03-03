@@ -4,8 +4,8 @@ Othello board game for FORTH - works with latest gforth
 code from long ago I keep bringing forward
 
 This was ported to FORTH from a BASIC game published in Byte Magazine long, long ago
-Oct 1977  https://archive.org/details/byte-magazine-1977-10/page/n61
-
+Oct 1977</pre>  https://archive.org/details/byte-magazine-1977-10/page/n61
+<prd>
 There is another version that works on a SUN Open Boot Prom also!
 
 Usage: 
