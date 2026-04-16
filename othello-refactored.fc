@@ -1,0 +1,271 @@
+\ refactored by Opus 4.6 4/16/2026 because it can
+\
+\ OTHELLO - works in gnu gforth
+\ Based on a version in BASIC published in
+\ Byte magazine long, long ago.
+\
+\ Board array A is a 10x10 byte array (8x8 board + border).
+\ Location I,J is addressed as: I 10 * J + a +
+\ Convention: I (row) second on stack, J (column) on top.
+\
+\   0,0      J -->
+\      ------------------
+\      |
+\    I |
+\      |       a
+\    | |
+\    | |
+\    V |
+\      |
+\                       9,9
+\
+\ Contents of A:  0 = empty, 1 = O, 2 = X
+\
+\ Note: In DO loops, Forth 'i' = innermost index, 'j' = next outer.
+\ In cpmove/pmove's nested 9 1 DO loops:
+\   outer loop (j) = row,  inner loop (i) = column.
+
+decimal
+
+\ ---- Board array, 100 bytes ----
+create a 100 allot
+
+\ ---- Direction offset arrays ----
+\ 8 directions indexed 1-8, stored as cells for signed values.
+\   +-+-+-+
+\   |4|3|2|
+\   |5|0|1|
+\   |6|7|8|
+\   +-+-+-+
+create i4  0 ,  0 , -1 , -1 , -1 ,  0 ,  1 ,  1 ,  1 ,
+create j4  0 ,  1 ,  1 ,  0 , -1 , -1 , -1 ,  0 ,  1 ,
+
+: di@ ( dir -- n ) cells i4 + @ ;
+: dj@ ( dir -- n ) cells j4 + @ ;
+
+\ ---- Display lookup: 0='.', 1='O', 2='X' ----
+create d  char . c,  char O c,  char X c,
+
+\ ---- Board address helper ----
+: a@ ( i j -- addr ) swap 10 * + a + ;
+
+\ ---- Print the board ----
+: board cr 3 spaces ." A B C D E F G H" cr
+  9 1 do
+    i .
+    9 1 do
+      space
+      j i a@ c@ d + c@ emit
+    loop
+    cr
+  loop ;
+
+\ ---- Initialize board ----
+: initial
+  a 100 0 fill
+  1 a 44 + c!  1 a 55 + c!
+  2 a 45 + c!  2 a 54 + c! ;
+
+\ ---- Game state variables ----
+variable t1    \ current side's piece
+variable t2    \ opponent's piece
+variable s1    \ score accumulator
+variable s3    \ per-direction counter
+variable u     \ flip flag: true = flip, false = just count
+variable fl    \ neighbor-found flag
+
+\ ---- Check if I,J has an adjacent T2 piece ----
+\ ( i j -- )  Sets fl. Consumes args.
+: neighbor
+  0 fl !
+  3 0 do
+    3 0 do
+      over j 1- + 10 *  over i 1- +  + a + c@  t2 @ =
+      if  1 fl !  leave  then
+    loop
+  loop  drop drop ;
+
+\ ---- Score: count and optionally flip ----
+\ ( i j -- i j )  Preserves args. Result in s1.
+\ Scans all 8 directions for runs of T2 terminated by T1.
+\ If u is true, flips captured pieces to T1.
+: score
+  0 s1 !
+  9 1 do
+    -1 s3 !
+    over i di@ + 10 *
+    over i dj@ + + a + c@  t2 @ =
+    if
+      9 1 do
+        s3 @ 1+ s3 !
+        over j di@ i * + 10 *
+        over j dj@ i * + + a +
+        c@ dup t2 @ = 0=
+        if  leave
+        else  drop
+        then
+      loop
+      t1 @ =
+      if
+        s3 @ dup s1 @ + s1 !
+        u @
+        if
+          1+ 1 do
+            over j di@ i * + 10 *
+            over j dj@ i * + + a +
+            t1 @ swap c!
+          loop
+        else  drop
+        then
+      then
+    then
+  loop ;
+
+\ ---- Computer and Human piece identities ----
+variable cpu  2 cpu !
+variable hum  1 hum !
+
+: choose cr ." Do you want X or O? "
+  key dup emit
+  [char] x =
+  if    1 cpu !  2 hum !
+  else  2 cpu !  1 hum !
+  then ;
+
+\ ---- Board position value array (territory strategy) ----
+\ 8x8 without border. Higher = more desirable.
+\ Indexed as: (row-1) 8 * (col-1) + v + c@
+create v
+  60 c, 12 c, 56 c, 44 c, 43 c, 55 c, 11 c, 59 c,
+  10 c,  4 c, 20 c, 28 c, 27 c, 19 c,  3 c,  9 c,
+  54 c, 18 c, 48 c, 36 c, 35 c, 47 c, 17 c, 53 c,
+  42 c, 26 c, 34 c,  0 c,  0 c, 33 c, 25 c, 41 c,
+  40 c, 24 c, 32 c,  0 c,  0 c, 31 c, 23 c, 39 c,
+  52 c, 16 c, 46 c, 30 c, 29 c, 45 c, 15 c, 51 c,
+   8 c,  2 c, 14 c, 22 c, 21 c, 13 c,  1 c,  7 c,
+  58 c,  6 c, 50 c, 38 c, 41 c, 49 c,  5 c, 57 c,
+
+: posval ( row col -- n ) swap 1- 8 * swap 1- + v + c@ ;
+
+\ ---- Computer move ----
+variable i3
+variable j3
+variable b1
+variable n
+
+\ cpmove scans the board for the best move.
+\ Uses i3,j3 for best position, b1 for best combined value.
+\ Combined value = position_value + score * 20.
+: cpmove
+  cpu @ t1 !  hum @ t2 !  0 b1 !
+  9 1 do
+    9 1 do
+      j 10 * i + a + c@ 0=
+      if
+        j i neighbor  fl @       \ neighbor consumes (row col)
+        if
+          0 u !
+          j i score              \ score preserves (row col) on stack
+          s1 @ 0>
+          if
+            over 1- 8 * over 1- + v + c@
+            s1 @ 20 * +  dup b1 @ >
+            if    b1 !  j3 !  i3 !      \ stores col->j3, row->i3
+            else  drop drop drop
+            then
+          else  drop drop
+          then
+        then
+      then
+    loop
+  loop
+  b1 @ 0=
+  if
+    cr ." I have to forfeit my move"
+    -1 n +!
+  else
+    cpu @  i3 @ 10 * j3 @ + a +  c!
+    i3 @ j3 @
+    1 u !  score  drop drop
+    cr ." I move to "
+    i3 @ .  [char] , emit  space
+    j3 @ [char] @ + emit
+    cr ." That gives me " s1 @ . ." of your pieces. "
+  then ;
+
+\ ---- Player move helper: place piece and flip ----
+\ Called with (row col) on stack from score. Flips and places piece.
+: 1pmove ( i j -- )
+  cr ." That gives you " s1 @ . ." of my pieces "
+  1 u !  score
+  over 10 * over + a +  hum @ swap c!
+  drop drop ;
+
+\ ---- Player move with input and validation ----
+\ Uses begin/until loop instead of recurse for safety.
+\ All paths must leave exactly ( flag ) on the stack for UNTIL.
+: pmove
+  hum @ t1 !  cpu @ t2 !
+  begin
+    cr ." Your move (row,col or 0 to forfeit): "
+    key dup [char] 0 =
+    if                              \ forfeit attempt
+      drop                          \ drop key value: ()
+      cr ." Are you forfeiting a move? (y/n) " key dup emit
+      [char] y =
+      if    -1 n +!  true           \ ( true ) -> exit
+      else  board  false            \ ( false ) -> retry
+      then
+    else                            \ normal move
+      dup emit  [char] 0 -          \ ( row )
+      [char] , emit                  \ display comma for user
+      key dup emit  [char] a 1- -   \ ( row col )
+      over 10 * over + a + c@ 0=
+      if
+        2dup neighbor  fl @         \ neighbor consumes copy: ( row col )
+        if
+          0 u !  2dup score         \ ( row col row col ) score keeps copy
+          s1 @ 0>
+          if    1pmove              \ 1pmove consumes score's (row col): ( row col )
+                2drop true          \ drop originals: ( true ) -> exit
+          else  drop drop           \ drop score's (row col): ( row col )
+                2drop               \ drop originals: ()
+                cr ." That doesn't flank a row "
+                board  false        \ ( false ) -> retry
+          then
+        else  2drop                 \ drop originals: ()
+              cr ." That isn't next to one of my pieces "
+              board  false          \ ( false ) -> retry
+        then
+      else
+        2drop                       \ drop originals: ()
+        cr ." That square is occupied"
+        board  false                \ ( false ) -> retry
+      then
+    then
+  until ;
+
+\ ---- Main game loop ----
+: othello
+  initial choose  4 n !
+  cr ." Do you want to move first? "
+  key dup emit  [char] y =
+  if  board pmove  1 n +!  then
+  begin
+    cpmove  1 n +!  board
+    n @ 64 < if  pmove  1 n +!  then
+    n @ 64 >=
+  until
+  \ Final score
+  0 s1 !  0 s3 !
+  100 0 do
+    a i + c@ dup
+    cpu @ =
+    if    drop  1 s1 +!
+    else  hum @ =
+          if  1 s3 +!  then
+    then
+  loop
+  cr ." I have " s1 @ .
+  ." and you have " s3 @ .
+  ." squares. " ;
